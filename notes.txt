@@ -1,0 +1,19 @@
+Overall Remarks:
+- In MINE paper: interesting experiments in 4.2. Capturing non-linear dependencies: they ensure that MI(X;f(X)+eps) is invariant across different bijective functions f
+- Positive/negative sampling: for each input X we generate 3 « views » of Y, those views are not really used in contrastive method (where the negative samples are the other Y of the batch)
+
+
+
+Observations from experiments:
+InfoNCE:
+- representation normalization is necessary (otherwise dot product scale with hidden dimension and the logsum is super sharp -> vanishing or exploding gradient)
+- In theory: Estimated I(X,Z) > log(B), so in high dimension the batch size should be high, in practice any batch size gives more or less the same result
+- Noise_Samples > 1 doesn’t change much (still a good way to generate more datapoints from fewer X) 
+
+CLUB:
+- Too many training samples makes noise consistency decreasing very sharply (on the other hand infoNCE is super consistent across number of samples)
+ (see CLUB/noise_level_dim_32_per_num_samples)
+
+ToDos:
+- add nonlinearity (tanh), no need for MLP style data (for now)
+
