@@ -12,9 +12,9 @@ import argparse
 
 from local_datasets.datasets import get_dataloaders
 from continuous_dropouts import *
-from doe_util import DoE
-from club_util import CLUB
-from mine_util import MINE
+from estimators.doe_util import DoE
+from estimators.club_util import CLUB
+from estimators.mine import MINE
 from NC_regularizer import compute_cluster
 
 # EXP_PATH = Path('checkpoints/densenet_cifar100/optuna_lambda_lmbd0.001')
