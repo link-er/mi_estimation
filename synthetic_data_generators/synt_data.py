@@ -54,7 +54,6 @@ class GausDropoutNetworkReprs(Dataset):
         return self.X[idx], self.Y[idx]
 
 
-
 class GausDropoutEmbedded(Dataset):
     """
     Gaussian X

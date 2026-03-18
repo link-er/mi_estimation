@@ -4,7 +4,7 @@ import numpy as np
 
 import json
 from pathlib import Path
-
+import argparse
 
 from estimators.infoNCE import InfoNCE
 from estimators.club import CLUB1
@@ -34,8 +34,7 @@ def plot_estimations(est, xlabel, title):
     ax.set_ylabel("MI(X, Z)")
     ax.set_title(title)
 
-    plt.tight_layout()
-    plt.show()
+    return fig
 
 
 def build_estimator(name, config, device):
@@ -64,6 +63,8 @@ def build_estimator(name, config, device):
                 hidden_dim=config["hidden_dim"],
                 ema_decay=config["ema_decay"],
             )
+
+
         
 
         case _:
@@ -72,12 +73,12 @@ def build_estimator(name, config, device):
     return model.to(device)
 
 
-def build_config(expe_name: str, estimator_name: str):
+def build_config(exp_name: str, estimator_name: str):
 
     config_path = (
         Path("config")
         / estimator_name
-        / f"{expe_name}.json"
+        / f"{exp_name}.json"
     )
 
     if not config_path.exists():
@@ -90,3 +91,17 @@ def build_config(expe_name: str, estimator_name: str):
 
     return config
 
+def setup_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--estimator", type=str, required=True,
+                        choices=["infonce", "club", "mine"],
+                        help="Estimator to use. Available options are 'infonce', 'club', and 'mine'."
+                        )
+    return parser
+
+def setup_logs(exp_name):
+    logs_path = Path("logs")
+    log_dir = logs_path / exp_name
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    return log_dir

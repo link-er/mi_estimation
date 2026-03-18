@@ -1,73 +1,57 @@
-import argparse
 import collections
 import json
 import random
 import numpy as np
-import os
 import datetime
+import matplotlib.pyplot as plt
+from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data.data import GausDropoutNetworkReprs
-from utils import plot_estimations, build_estimator, build_config
-
-
-# --------------------------------------------------
-# Arguments
-# --------------------------------------------------
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--estimator", 
-                    type=str, 
-                    default="infonce",
-                    required=True)
-args = parser.parse_args()
-
-
-# --------------------------------------------------
-# Experiment Name
-# --------------------------------------------------
-
-EXPERIMENT_NAME = "noise_consistency_test"
-
-config = build_config(EXPERIMENT_NAME, args.estimator)
-
-BS = config["batch_size"]
-LR = config["learning_rate"]
-GRAD_CLIP = config["grad_clip"]
-X_SIZE = config["train_samples"]
-VAL_SIZE = config["val_samples"]
-DIM = config["dim"]
-NOISE_LEVELS = config["noise_levels"]
-SEED = config["seed"]
-N_RUNS = config["n_runs"]
-NOISE_SAMPLES = config["noise_samples"]
-
-
-# --------------------------------------------------
-# Main
-# --------------------------------------------------
+from synthetic_data_generators import GausDropoutNetworkReprs
+from utils import *
 
 if __name__ == "__main__":
+    exp_args_parser = setup_parser()
+    args = exp_args_parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
+    # --------------------------------------------------
+    # Experiment Config
+    # --------------------------------------------------
+    EXPERIMENT_NAME = "noise_consistency_test"
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
     exp_name = (
-        f"{args.estimator}_{EXPERIMENT_NAME}_"
-        f"dim{DIM}_bs{BS}_runs{N_RUNS}_{timestamp}"
+        f"{args.estimator}_{EXPERIMENT_NAME}_{timestamp}"
     )
 
-    log_dir = os.path.join("logs", exp_name)
-    os.makedirs(log_dir, exist_ok=True)
+    # load default config (or the best we know to now)
+    config = build_config(EXPERIMENT_NAME, args.estimator)
 
-    # Save config
-    with open(os.path.join(log_dir, "config.json"), "w") as f:
+    BS = config["batch_size"]
+    LR = config["learning_rate"]
+    GRAD_CLIP = config["grad_clip"]
+    TRAIN_SAMPLES = config["train_samples"]
+    VAL_SAMPLES = config["val_samples"]
+    DIM = config["dim"]
+    SEED = config["seed"]
+    N_RUNS = config["n_runs"]
+    NOISE_SAMPLES = config["noise_samples"]
+
+    # only in this type of experiment, and here we do not have NOISE therefore
+    # larger noise leads to smaller MI
+    NOISE_LEVELS = config["noise_levels"]
+
+    log_dir = setup_logs(exp_name)
+    log_file = log_dir / (exp_name + "_config.json")
+    # Save config, as a duplicate, but allows for double checking if something was changed compared to the saved one
+    with log_file.open("w") as f:
         json.dump(config, f, indent=4)
+    # -------------------------------------------------
 
     final_results = collections.OrderedDict()
 
@@ -93,7 +77,14 @@ if __name__ == "__main__":
             train_dataset = GausDropoutNetworkReprs(
                 dim=DIM,
                 noise=NOISE,
-                num_samples=X_SIZE,
+                num_samples=TRAIN_SAMPLES,
+                noise_samples=NOISE_SAMPLES,
+            )
+
+            val_dataset = GausDropoutNetworkReprs(
+                dim=DIM,
+                noise=NOISE,
+                num_samples=VAL_SAMPLES,
                 noise_samples=NOISE_SAMPLES,
             )
 
@@ -101,6 +92,13 @@ if __name__ == "__main__":
                 train_dataset,
                 batch_size=BS,
                 shuffle=True,
+                drop_last=True,
+            )
+
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=BS,
+                shuffle=False,
                 drop_last=True,
             )
 
@@ -116,9 +114,10 @@ if __name__ == "__main__":
                 device,
             )
 
-            optimizer = torch.optim.Adam(
+            optimizer = torch.optim.AdamW(
                 model.parameters(),
                 LR,
+                weight_decay=0.01
             )
 
             # ---------------- Training ----------------
@@ -151,20 +150,6 @@ if __name__ == "__main__":
                 )
 
             # ---------------- Validation ----------------
-
-            val_dataset = GausDropoutNetworkReprs(
-                dim=DIM,
-                noise=NOISE,
-                num_samples=VAL_SIZE,
-                noise_samples=NOISE_SAMPLES,
-            )
-
-            val_loader = DataLoader(
-                val_dataset,
-                batch_size=BS,
-                shuffle=False,
-                drop_last=True,
-            )
 
             model.eval()
             val_mi_total = 0.0
@@ -206,15 +191,18 @@ if __name__ == "__main__":
 
     # ---------------- Save Results ----------------
 
-    results_path = os.path.join(log_dir, "results.json")
+    results_path = log_dir / (exp_name + "_results.json")
 
     with open(results_path, "w") as f:
         json.dump(final_results, f, indent=4)
 
     # ---------------- Plot ----------------
 
-    plot_estimations(
+    figure = plot_estimations(
         final_results,
         "Noise",
         f"{args.estimator} MI Estimate (Mean ± Std)",
     )
+    plt.tight_layout()
+    plt.savefig(log_dir / (exp_name + "_results.png"), dpi=200, format="png")
+    plt.show()

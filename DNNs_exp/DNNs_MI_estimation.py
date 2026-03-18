@@ -15,7 +15,6 @@ from continuous_dropouts import *
 from estimators.doe_util import DoE
 from estimators.club_util import CLUB
 from estimators.mine import MINE
-from NC_regularizer import compute_cluster
 
 # EXP_PATH = Path('checkpoints/densenet_cifar100/optuna_lambda_lmbd0.001')
 DATA_DIM = 3*32*32 # experiment specific! 3*32*32 for CIFAR and SVHN, 28*28 for FMNIST, 256 for mini-Bert embeddings
@@ -51,10 +50,6 @@ def extract_representations(model, dataloader, device='cuda', llm_mode=False):
     reps = torch.cat(reps, dim=0)   # (N, D)
     labels = torch.cat(labels, dim=0)
     return reps, labels
-
-def compute_cdnv_from_reprs(reprs: torch.Tensor, labels: torch.Tensor, device=None):
-    cdnv, _, _ = compute_cluster(reprs, labels)
-    return cdnv
 
 # single batch training for DoE with SAMPLES stochastic reps
 def train_doe(doe, optimizer, model, loader, device, llm_mode=False):
@@ -202,53 +197,17 @@ if __name__ == '__main__':
     EXP_PATH = Path(args.exp_dir)
     args.llm_mode = args.llm_mode.lower() == "true"
 
-    spec = importlib.util.spec_from_file_location("param_setup", (EXP_PATH / "params.py"))
+    spec = importlib.util.spec_from_file_location("param_setup", "params_resenet18_cifar10.py")
     params = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(params)
 
-    cur_lmbd = float(str(args.exp_dir).split("/")[-1].split('_')[0][4:])
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     data_loaders = get_dataloaders(params.dset_dir, BS, drop_last=False)
     train_data = data_loaders['train'].dataset
     test_data = data_loaders['test'].dataset
-
-    # plot and save learning history
     train_hist = pickle.load(open((EXP_PATH/"train_history.pkl"), "rb"))
     test_hist = pickle.load(open((EXP_PATH/"test_history.pkl"), "rb"))
-    plt.plot(test_hist['epoch'], test_hist['loss'], c='orange', label='classification loss')
-    plt.plot(train_hist['epoch'], train_hist['loss'], c='orange', linestyle='--', alpha=0.6, label='train classification loss')
-    plt.plot(test_hist['epoch'], test_hist['acc'], c='blue', label='test accuracy')
-    plt.plot(train_hist['epoch'], train_hist['acc'], c='blue', linestyle='--', alpha=0.6, label='train accuracy')
-    plt.legend()
-    #plt.show()
-    plt.savefig(EXP_PATH/"training_hist.jpg")
-    plt.close()
-    '''
-    cdnv_hist = pickle.load(open((EXP_PATH/"cdnv_history.pkl"), "rb"))
-    fig, ax1 = plt.subplots(figsize=(8, 5))
-    # --- first y-axis: loss + accuracy ---
-    ax1.plot(test_hist['epoch'], test_hist['loss'], c='orange', label='test loss')
-    ax1.plot(train_hist['epoch'], train_hist['loss'], c='orange', linestyle='--', alpha=0.6, label='train loss')
-    ax1.plot(test_hist['epoch'], test_hist['acc'], c='blue', label='test accuracy')
-    ax1.plot(train_hist['epoch'], train_hist['acc'], c='blue', linestyle='--', alpha=0.6, label='train accuracy')
-    ax1.set_xlabel("Epoch")
-    ax1.set_ylabel("Loss / Accuracy")
-    ax1.tick_params(axis='y')
-    ax1.legend(loc="upper left")
-    # --- second y-axis: CDNV ---
-    ax2 = ax1.twinx()
-    ax2.plot(cdnv_hist['epoch'], cdnv_hist['cdnv'], c='green', label='train CDNV')
-    ax2.set_ylabel("CDNV")
-    ax2.tick_params(axis='y', labelcolor='green')
-    # combine legends from both axes
-    lines, labels = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines + lines2, labels + labels2)
-    fig.tight_layout()
-    plt.savefig(EXP_PATH / "training_hist_with_cdnv.jpg")
-    plt.close()
-    '''
     last_epoch = train_hist['epoch'][-1]
     params.model.load_state_dict(torch.load(EXP_PATH/("chkp_"+str(last_epoch)), weights_only=True))
     params.model.to(device)
@@ -284,28 +243,6 @@ if __name__ == '__main__':
     #plot_mi_loss_log(mi_critic_logs, "DoE_train_data")
     print("Full MI train ", train_mi_xz)
 
-    print("conditional on label MI for train data")
-    # compute also I(X;Z∣Y) as average among all the per label MIs
-    train_mi_xz_byy = []
-    for targ in range(params.num_classes):
-        print("class ", targ, end=":")
-
-        target_indices = np.where(np.array(train_data.targets) == targ)[0] # train_data.targets or train_data.labels or train_data["label"]
-        print(len(target_indices), end=".")
-        target_subset = Subset(train_data, target_indices)
-        target_subset_loader = torch.utils.data.DataLoader(target_subset, batch_size=BS, shuffle=True, num_workers=1, pin_memory=True, drop_last=False)
-
-        doe_l = DoE(DATA_DIM, REPR_DIM, critic_params['hidden'], critic_params['layers'], 'logistic').to(device)
-        optimizer = optim.AdamW(doe_l.parameters(), lr=LR)
-        mi_critic_logs = []
-        # since per class amounts are extremely small, one epoch is better not to bias
-        for ep in range(1):
-            L_doe_l, logs = train_doe(doe_l, optimizer, params.model, target_subset_loader, device, args.llm_mode)
-            mi_critic_logs += logs
-        train_mi_xz_byy.append(report_MI(L_doe_l))
-    print(train_mi_xz_byy)
-    train_mi_xz_byy = np.mean(train_mi_xz_byy)
-
     print("MI for test data")
     ## MINE
     mine_test = MINE(DATA_DIM, REPR_DIM, hidden=min(512, 2 * REPR_DIM)).to(device)
@@ -336,84 +273,11 @@ if __name__ == '__main__':
     #plot_mi_loss_log(mi_critic_logs, "DoE_test_data")
     print("Full MI test ", test_mi_xz)
 
-    print("conditional on label MI for test data")
-    test_mi_xz_byy = []
-    for targ in range(params.num_classes):
-        print("class ", targ, end=":")
-
-        target_indices = np.where(np.array(test_data.targets) == targ)[0] # test_data.targets or test_data.labels or test_data["label"]
-        print(len(target_indices), end=".")
-        target_subset = Subset(test_data, target_indices)
-        target_subset_loader = torch.utils.data.DataLoader(target_subset, batch_size=BS, shuffle=True, num_workers=1, pin_memory=True, drop_last=False)
-
-        doe_l_test = DoE(DATA_DIM, REPR_DIM, critic_params['hidden'], critic_params['layers'], 'logistic').to('cuda')
-        optim_test = optim.AdamW(doe_l_test.parameters(), lr=LR)
-        mi_critic_logs = []
-        # since per class amounts are extremely small, one epoch is better not to bias
-        for ep in range(1):
-            L_doe_l_test, logs = train_doe(doe_l_test, optim_test, params.model, target_subset_loader, device, args.llm_mode)
-            mi_critic_logs += logs
-        test_mi_xz_byy.append(report_MI(L_doe_l_test))
-    print(test_mi_xz_byy)
-    test_mi_xz_byy = np.mean(test_mi_xz_byy)
-
-    # (g1) Compute neural collapse geometric characteristic
-    # cdnv(Q1, Q2) = (Var(Q1) + Var(Q2))/(2|mu(Q1) - mu(Q2)|^2)
-    # for final sets we take the penultimate representation f, for each class find mean and E[|f - mu|^2] (var)
-    # tends to 0 when collapse is happening
-    # "ON THE ROLE OF NEURAL COLLAPSE IN TRANSFER LEARNING" Galanti
-    # representations are sampled also with dropout, so they correspond to the distributions in which we measure MI
-    train_reps, train_labels = extract_representations(params.model, data_loaders['train'], device=device, llm_mode=args.llm_mode)
-    test_reps, test_labels = extract_representations(params.model, data_loaders['test'], device=device, llm_mode=args.llm_mode)
-    train_cdnv = compute_cdnv_from_reprs(train_reps, train_labels, device=device)
-    test_cdnv = compute_cdnv_from_reprs(test_reps, test_labels, device=device)
-    print("Avg train CDNV", train_cdnv.item())
-    print("Avg test CDNV", test_cdnv.item())
-
-    '''
-    # (g2) Compute entropy of binned representation on the dimensionality reduced space
-    # 5 components should be good represented in data
-    pca = PCA(n_components=5)
-    train_reprs_red = pca.fit_transform(train_reprs)
-    binned_repr = np.floor(BINS * MinMaxScaler().fit_transform(train_reprs_red))
-    value, counts = np.unique(binned_repr, return_counts=True, axis=0)
-    print("PCA explained variance", pca.explained_variance_)
-    print("Unique representations after PCA and binning in train set", len(counts))
-    norm_counts = counts / counts.sum()
-    train_ent = -(norm_counts * np.log(norm_counts)).sum()
-    print("Binned entropy on train data", train_ent)
-    # use the same PCA as in train
-    test_reprs_red = pca.transform(test_reprs)
-    binned_repr = np.floor(BINS * MinMaxScaler().fit_transform(test_reprs_red))
-    value, counts = np.unique(binned_repr, return_counts=True, axis=0)
-    norm_counts = counts / counts.sum()
-    test_ent = -(norm_counts * np.log(norm_counts)).sum()
-    print("Binned entropy on test data", test_ent)
-
-    # (g3) Silhouette score on reduced dimensionality representations
-    # The best value is 1 and the worst value is -1.
-    # Values near 0 indicate overlapping clusters.
-    # Negative values generally indicate that a sample has been assigned to the wrong cluster, as a different cluster is more similar.
-    train_silh_sc = silhouette_score(train_reprs_red, train_labels)
-    print("Silhouette score on train data", train_silh_sc)
-    test_silh_sc = silhouette_score(test_reprs_red, test_labels)
-    print("Silhouette score on test data", test_silh_sc)
-    '''
-
     pickle.dump({
         'train_acc': train_hist['acc'][-1],
         'test_acc': test_hist['acc'][-1],
         'train_loss': train_hist['loss'][-1],
         'test_loss': test_hist['loss'][-1],
-        'train_IXZ_givenY': train_mi_xz_byy,
-        'test_IXZ_givenY': test_mi_xz_byy,
         'train_IXZ': train_mi_xz,
         'test_IXZ': test_mi_xz,
-        # geometric characteristics
-        'train_NC_g1': train_cdnv.item(),
-        'test_NC_g1': test_cdnv.item(),
-        #'train_H_bin_Z_g2': train_ent,
-        #'test_H_bin_Z_g2': test_ent,
-        #'train_silh_sc': train_silh_sc,
-        #'test_silh_sc': test_silh_sc
     }, open(EXP_PATH / "mine_characteristics.pkl", "wb"))
