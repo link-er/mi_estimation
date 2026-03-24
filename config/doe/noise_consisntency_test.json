@@ -1,8 +1,7 @@
 {
     "seed": 42,
 
-    "dimX": 32,
-    "dimY": 32,
+    "dim": 32,
     "hidden_dim": 128,
 
     "batch_size": 64,
@@ -14,7 +13,7 @@
 
     "noise_levels": [0.01, 0.05, 0.1, 0.3, 0.45, 0.5],
 
-    "noise_samples": 3,
+    "noise_samples": 1,
 
-    "n_runs": 2
+    "n_runs": 1
 }

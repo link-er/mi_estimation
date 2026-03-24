@@ -37,7 +37,8 @@ if __name__ == "__main__":
     GRAD_CLIP = config["grad_clip"]
     TRAIN_SAMPLES = config["train_samples"]
     VAL_SAMPLES = config["val_samples"]
-    DIM = config["dim"]
+    DIM_X = config["dimX"]
+    DIM_Y = config["dimY"]
     SEED = config["seed"]
     N_RUNS = config["n_runs"]
     NOISE_SAMPLES = config["noise_samples"]
@@ -74,15 +75,23 @@ if __name__ == "__main__":
 
             # ---------------- Dataset ----------------
 
+            # transformation matrices
+            A = torch.randn(DIM_Y, DIM_X)
+            B = torch.randn(DIM_Y)
+
             train_dataset = GausDropoutNetworkReprs(
-                dim=DIM,
+                dimX=DIM_X,
+                dimY=DIM_Y,
+                A = A, B = B,
                 noise=NOISE,
                 num_samples=TRAIN_SAMPLES,
                 noise_samples=NOISE_SAMPLES,
             )
 
             val_dataset = GausDropoutNetworkReprs(
-                dim=DIM,
+                dimX=DIM_X,
+                dimY=DIM_Y,
+                A = A, B = B,
                 noise=NOISE,
                 num_samples=VAL_SAMPLES,
                 noise_samples=NOISE_SAMPLES,
@@ -105,8 +114,6 @@ if __name__ == "__main__":
             # ---------------- Model ----------------
 
             config_run = config.copy()
-            config_run["x_dim"] = DIM
-            config_run["y_dim"] = DIM
 
             model = build_estimator(
                 args.estimator,
@@ -127,6 +134,7 @@ if __name__ == "__main__":
                 train_loader,
                 desc=f"Train | noise={NOISE} | run={run+1}",
             )
+            train_losses = []
 
             for X, Y in train_bar:
 
@@ -144,10 +152,20 @@ if __name__ == "__main__":
 
                 optimizer.step()
 
+                train_losses.append(loss.item())
                 train_bar.set_postfix(
                     loss=f"{loss.item():.4f}",
                     mi=f"{mi_estimate.item():.4f}",
                 )
+
+            if run == 0:
+                train_log_path = log_dir / (exp_name + "_train_loss_noise" + str(NOISE) + "_run0.json")
+
+                plt.plot(np.arange(0, len(train_losses)), train_losses)
+                plt.show()
+
+                with open(train_log_path, "w") as f:
+                    json.dump(train_losses, f, indent=4)
 
             # ---------------- Validation ----------------
 

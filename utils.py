@@ -6,9 +6,7 @@ import json
 from pathlib import Path
 import argparse
 
-from estimators.infoNCE import InfoNCE
-from estimators.club import CLUB1
-from estimators.mine import MINE
+from estimators import CLUB, MINE, InfoNCE
 
 
 def plot_estimations(est, xlabel, title):
@@ -43,23 +41,24 @@ def build_estimator(name, config, device):
 
         case "infonce":
             model = InfoNCE(
-                x_dim=config["x_dim"],
-                y_dim=config["y_dim"],
+                x_dim=config["dimX"],
+                y_dim=config["dimY"],
                 hidden_dim=config["hidden_dim"],
                 temperature=config["temperature"],
             )
 
         case "club":
-            model = CLUB1(
-                x_dim=config["x_dim"],
-                y_dim=config["y_dim"],
+            model = CLUB(
+                x_dim=config["dimX"],
+                y_dim=config["dimY"],
+                # width of the network that approximates conditional Gaussian of y|x
                 hidden_dim=config["hidden_dim"],
             )
 
         case "mine":
             model = MINE(
-                x_dim=config["x_dim"],
-                y_dim=config["y_dim"],
+                x_dim=config["dimX"],
+                y_dim=config["dimY"],
                 hidden_dim=config["hidden_dim"],
                 ema_decay=config["ema_decay"],
             )
@@ -94,8 +93,8 @@ def build_config(exp_name: str, estimator_name: str):
 def setup_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--estimator", type=str, required=True,
-                        choices=["infonce", "club", "mine"],
-                        help="Estimator to use. Available options are 'infonce', 'club', and 'mine'."
+                        choices=["infonce", "club", "mine", "doe"],
+                        help="Estimator to use. Available options are 'infonce', 'club', 'doe', and 'mine'."
                         )
     return parser
 

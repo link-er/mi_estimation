@@ -3,45 +3,59 @@ import torch
 from torch.utils.data import Dataset
 from scipy.stats import ortho_group
 
-
+# you can get a mixed dataset of noisy ys or just pass noise_samples=1 and then get dataset of representations
+# you can use droppedout then to modify batch of representations into noisy versions, kind of one sample from dropout
 class GausDropoutNetworkReprs(Dataset):
-    def __init__(self, dim, noise, num_samples, noise_samples):
+    def __init__(self, dimX, dimY, A, B, noise, num_samples, noise_samples=1):
         """ 
-        dim: dimensionality 
+        dimX: dimensionality of X
+        dimY: dimensionality of y
         noise: variance scaling for multiplicative noise 
         num_samples: number of X 
         noise_samples: nb of positive samples per X 
         total number of samples given is: num_samples * noise_samples 
         """
         super().__init__()
-        self.dim = dim
-        self.noise = noise
+        self.dimX = dimX
+        self.dimY = dimY
+        self.A = A
+        self.B = B
         self.num_samples = num_samples
         self.noise_samples = noise_samples
+
+        self.noise_distr = (np.ones(self.dimY), np.identity(self.dimY) * noise)
+
         self._create_samples()
 
-    def lin_func(self, x):
-        return 2 * x + 4.5
+    def perceptron_func(self, x):
+        return torch.tanh(torch.matmul(torch.from_numpy(x).float(), self.A).squeeze() + self.B).numpy()
+
+    def droppedout(self, y):
+        drp = []
+        for yi in y:
+            eps = np.random.multivariate_normal(
+                self.noise_distr[0], self.noise_distr[1], len(yi)
+            )
+            drp.append(y*eps)
+        return np.array(drp)
 
     def _create_samples(self):
-        mean = np.zeros(self.dim)
-        cov = np.identity(self.dim)
+        mean = np.zeros(self.dimX)
+        cov = np.identity(self.dimX)
 
         X = np.random.multivariate_normal(mean, cov, self.num_samples)
-        fx = self.lin_func(X)
+        Y = self.perceptron_func(X)
 
-        mean_d = np.ones(self.dim)
-        cov_d = np.identity(self.dim) * self.noise
         eps = np.random.multivariate_normal(
-            mean_d, cov_d, self.num_samples * self.noise_samples
+            self.noise_distr[0], self.noise_distr[1], self.num_samples * self.noise_samples
         )
 
         X_rep = np.repeat(X, self.noise_samples, axis=0)
-        fx_rep = np.repeat(fx, self.noise_samples, axis=0)
+        Y_rep = np.repeat(Y, self.noise_samples, axis=0)
 
         p = np.random.permutation(self.num_samples * self.noise_samples)
 
-        Y = (fx_rep * eps)[p]
+        Y = (Y_rep * eps)[p]
         X_rep = X_rep[p]
 
         self.X = torch.from_numpy(X_rep).float()
