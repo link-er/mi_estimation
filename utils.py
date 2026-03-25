@@ -41,24 +41,24 @@ def build_estimator(name, config, device):
 
         case "infonce":
             model = InfoNCE(
-                x_dim=config["dimX"],
-                y_dim=config["dimY"],
+                x_dim=config["x_dim"],
+                y_dim=config["y_dim"],
                 hidden_dim=config["hidden_dim"],
                 temperature=config["temperature"],
             )
 
         case "club":
             model = CLUB(
-                x_dim=config["dimX"],
-                y_dim=config["dimY"],
+                x_dim=config["x_dim"],
+                y_dim=config["y_dim"],
                 # width of the network that approximates conditional Gaussian of y|x
                 hidden_dim=config["hidden_dim"],
             )
 
         case "mine":
             model = MINE(
-                x_dim=config["dimX"],
-                y_dim=config["dimY"],
+                x_dim=config["x_dim"],
+                y_dim=config["y_dim"],
                 hidden_dim=config["hidden_dim"],
                 ema_decay=config["ema_decay"],
             )
