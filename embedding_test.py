@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
             # ---------------- Model ----------------
 
-            # Important: y_dim depends on ADDDIM
+            #y_dim depends on ADDDIM
             config_run = config.copy()
             config_run["x_dim"] = DIM
             config_run["y_dim"] = DIM + ADDDIM
@@ -122,6 +122,13 @@ if __name__ == "__main__":
                 LR,
                 weight_decay=0.01
             )
+
+
+            if GRAD_CLIP is None:
+                clip_fn = lambda params: None
+            else:
+                clip_fn = lambda params: torch.nn.utils.clip_grad_norm_(params, GRAD_CLIP)
+
 
             # ---------------- Training ----------------
 
@@ -140,10 +147,7 @@ if __name__ == "__main__":
                 loss, _ = model(X, Y)
                 loss.backward()
 
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    GRAD_CLIP,
-                )
+                clip_fn(model.parameters())
 
                 optimizer.step()
 

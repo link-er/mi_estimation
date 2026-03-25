@@ -37,8 +37,8 @@ if __name__ == "__main__":
     GRAD_CLIP = config["grad_clip"]
     TRAIN_SAMPLES = config["train_samples"]
     VAL_SAMPLES = config["val_samples"]
-    DIM_X = config["dimX"]
-    DIM_Y = config["dimY"]
+    DIMX = config["dimX"]
+    DIMY = config["dimY"]
     SEED = config["seed"]
     N_RUNS = config["n_runs"]
     NOISE_SAMPLES = config["noise_samples"]
@@ -76,12 +76,12 @@ if __name__ == "__main__":
             # ---------------- Dataset ----------------
 
             # transformation matrices
-            A = torch.randn(DIM_Y, DIM_X)
-            B = torch.randn(DIM_Y)
+            A = torch.randn(DIMX, DIMY)
+            B = torch.randn(DIMX)
 
             train_dataset = GausDropoutNetworkReprs(
-                dimX=DIM_X,
-                dimY=DIM_Y,
+                dimX=DIMX,
+                dimY=DIMY,
                 A = A, B = B,
                 noise=NOISE,
                 num_samples=TRAIN_SAMPLES,
@@ -89,8 +89,8 @@ if __name__ == "__main__":
             )
 
             val_dataset = GausDropoutNetworkReprs(
-                dimX=DIM_X,
-                dimY=DIM_Y,
+                dimX=DIMX,
+                dimY=DIMY,
                 A = A, B = B,
                 noise=NOISE,
                 num_samples=VAL_SAMPLES,
@@ -112,8 +112,9 @@ if __name__ == "__main__":
             )
 
             # ---------------- Model ----------------
-
             config_run = config.copy()
+            config_run["x_dim"] = DIMX
+            config_run["y_dim"] = DIMY 
 
             model = build_estimator(
                 args.estimator,
@@ -126,6 +127,12 @@ if __name__ == "__main__":
                 LR,
                 weight_decay=0.01
             )
+
+            if GRAD_CLIP is None:
+                clip_fn = lambda params: None
+            else:
+                clip_fn = lambda params: torch.nn.utils.clip_grad_norm_(params, GRAD_CLIP)
+
 
             # ---------------- Training ----------------
 
@@ -145,10 +152,7 @@ if __name__ == "__main__":
                 loss, mi_estimate = model(X, Y)
                 loss.backward()
 
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    GRAD_CLIP,
-                )
+                clip_fn(model.parameters())
 
                 optimizer.step()
 

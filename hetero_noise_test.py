@@ -122,6 +122,12 @@ if __name__ == "__main__":
                 LR,
             )
 
+            if GRAD_CLIP is None:
+                clip_fn = lambda params: None
+            else:
+                clip_fn = lambda params: torch.nn.utils.clip_grad_norm_(params, GRAD_CLIP)
+
+
             # ---------------- Training ----------------
 
             model.train()
@@ -139,10 +145,7 @@ if __name__ == "__main__":
                 loss, _ = model(X, Y)
                 loss.backward()
 
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    GRAD_CLIP,
-                )
+                clip_fn(model.parameters())
 
                 optimizer.step()
 
