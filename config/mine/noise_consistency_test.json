@@ -1,7 +1,8 @@
 {
     "seed": 42,
 
-    "dim": 5,
+    "dimX": 32,
+    "dimY": 32,
     "hidden_dim": 128,
     "ema_decay": 0.99,
 

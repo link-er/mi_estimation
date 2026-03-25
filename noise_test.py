@@ -166,7 +166,7 @@ if __name__ == "__main__":
                 train_log_path = log_dir / (exp_name + "_train_loss_noise" + str(NOISE) + "_run0.json")
 
                 plt.plot(np.arange(0, len(train_losses)), train_losses)
-                plt.show()
+                plt.show(block=False)
 
                 with open(train_log_path, "w") as f:
                     json.dump(train_losses, f, indent=4)

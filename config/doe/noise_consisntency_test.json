@@ -1,7 +1,8 @@
 {
     "seed": 42,
 
-    "dim": 32,
+    "dimX": 32,
+    "dimY": 32,
     "hidden_dim": 128,
 
     "batch_size": 64,
