@@ -72,16 +72,17 @@ class GausDropoutEmbedded(Dataset):
     """
     Gaussian X
     Y = (2X + 4.5) * multiplicative Gaussian noise
-    Y can optionally be embedded into higher dimension via orthogonal projection.
+    Y_emb = Y embedded into higher dimension via orthogonal projection
     """
 
-    def __init__(self, dim, noise, num_samples, add_dim=0):
+    def __init__(self, dim, noise, num_samples, noise_samples, add_dim=0):
         super().__init__()
 
         self.dim = dim
         self.noise = noise
         self.num_samples = num_samples
         self.add_dim = add_dim
+        self.noise_samples = noise_samples
 
         self._create_samples()
 
@@ -95,24 +96,44 @@ class GausDropoutEmbedded(Dataset):
         X = np.random.multivariate_normal(mean, cov, self.num_samples)
         fx = self.lin_func(X)
 
+        X_rep = np.repeat(X, self.noise_samples, axis=0)
+        fx_rep = np.repeat(fx, self.noise_samples, axis=0)
+
+        # ---- multiplicative noise ----
         mean_d = np.ones(self.dim)
         cov_d = np.identity(self.dim) * self.noise
-        eps = np.random.multivariate_normal(mean_d, cov_d, self.num_samples)
+        eps = np.random.multivariate_normal(
+            mean_d,
+            cov_d,
+            self.num_samples * self.noise_samples
+        )
 
-        Y = fx * eps
+        # ---- generate Y ----
+        Y = fx_rep * eps
 
+        # ---- shuffle (important for batching) ----
+        p = np.random.permutation(len(Y))
+        X_rep = X_rep[p]
+        Y = Y[p]
+
+        # ---- embedding ----
         if self.add_dim > 0:
             transform = ortho_group.rvs(self.dim + self.add_dim)
-            Y = Y @ transform[:self.dim, :]
+            Y_emb = Y @ transform[:self.dim, :]
+        else:
+            Y_emb = Y
 
-        self.X = torch.from_numpy(X).float()
+        # ---- convert to torch ----
+        self.X = torch.from_numpy(X_rep).float()
         self.Y = torch.from_numpy(Y).float()
+        self.Y_emb = torch.from_numpy(Y_emb).float()
+
 
     def __len__(self):
-        return self.num_samples
+        return self.num_samples * self.noise_samples
 
     def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx]
+        return self.X[idx], self.Y[idx], self.Y_emb[idx]
 
 
 class GausDropoutHeterosc(Dataset):
@@ -126,13 +147,14 @@ class GausDropoutHeterosc(Dataset):
     eps ~ N(1, noise * I)
     """
 
-    def __init__(self, dim, noise, num_samples, cov_value):
+    def __init__(self, dim, noise, num_samples, noise_samples, cov_value):
         super().__init__()
 
         self.dim = dim
         self.noise = noise
         self.num_samples = num_samples
         self.cov_value = cov_value
+        self.noise_samples = noise_samples
 
         self._create_samples()
 
@@ -153,20 +175,27 @@ class GausDropoutHeterosc(Dataset):
 
         fx = self.lin_func(X)
 
+        X_rep = np.repeat(X, self.noise_samples, axis=0)
+        fx_rep = np.repeat(fx, self.noise_samples, axis=0)
+
         # Multiplicative Gaussian noise
         eps = np.random.multivariate_normal(
             np.ones(self.dim),
             np.eye(self.dim) * self.noise,
-            self.num_samples
+            self.num_samples * self.noise_samples
         )
 
-        Y = fx * eps
+        Y = fx_rep * eps
 
-        self.X = torch.from_numpy(X).float()
+        p = np.random.permutation(len(Y))
+        X_rep = X_rep[p]
+        Y = Y[p]
+
+        self.X = torch.from_numpy(X_rep).float()
         self.Y = torch.from_numpy(Y).float()
 
     def __len__(self):
-        return self.num_samples
+        return self.num_samples  
 
     def __getitem__(self, idx):
         return self.X[idx], self.Y[idx]
