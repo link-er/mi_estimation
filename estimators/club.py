@@ -33,37 +33,24 @@ class CLUB(nn.Module):
         mu = self.p_mu(x_samples)
         logvar = self.p_logvar(x_samples)
         var = logvar.exp()
-
-        # -------------------------------------------------
-        # Shared squared difference for positive pairs
-        # -------------------------------------------------
-
+        
         diff_pos = mu - y_samples
         sq_diff_pos = diff_pos ** 2
 
-        # -------------------------------------------------
-        # Upper Bound Estimate
-        # main CLUB formula computation
-        # -------------------------------------------------
-
-        positive = - sq_diff_pos / (2.0 * var)
+        positive = - sq_diff_pos / (2 * var)
 
         prediction = mu.unsqueeze(1)         # [B,1,D]
         y_expand = y_samples.unsqueeze(0)    # [1,B,D]
 
         sq_diff_neg = (y_expand - prediction) ** 2
-        negative = - sq_diff_neg.mean(dim=1) / (2.0 * var)
+        negative = - sq_diff_neg.mean(dim=1) / (2 * var)
 
         ub_estimate = (
             positive.sum(dim=-1)
             - negative.sum(dim=-1)
         ).mean()
 
-        # -------------------------------------------------
-        # Training Loss (reuse sq_diff_pos & var)
-        #  log-likelihood of a multivariate Gaussian N(y∣μ(x),diag(σ2(x)))
-        #  summed over dimensions and averaged over samples
-        # -------------------------------------------------
+
         loglikeli = (
             - sq_diff_pos / var
             - logvar
