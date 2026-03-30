@@ -40,8 +40,9 @@ if __name__ == "__main__":
     DIM = config["dim"]
     SEED = config["seed"]
     N_RUNS = config["n_runs"]
-    NOISE_SAMPLES = ["noise_samples"]
+    # NOISE_SAMPLES = config["noise_samples"]
     NOISE = config["noise"]
+    NOISE_SAMPLES = config["noise_samples"]
 
     # only in this experiemnt type
     # additional dimensions that do not carry any information in X
@@ -76,20 +77,20 @@ if __name__ == "__main__":
 
             # ---------------- Dataset ----------------
 
-            train_dataset = GausDropoutEmbedded(
+            dataset = GausDropoutEmbedded(
                 dim=DIM,
                 noise=NOISE,
-                num_samples=TRAIN_SAMPLES,
+                num_samples=TRAIN_SAMPLES + VAL_SAMPLES,
                 add_dim=ADDDIM,
+                noise_samples=NOISE_SAMPLES
             )
 
-            val_dataset = GausDropoutEmbedded(
-                dim=DIM,
-                noise=NOISE,
-                num_samples=VAL_SAMPLES,
-                add_dim=ADDDIM,
+            train_dataset, val_dataset = torch.utils.data.random_split(
+                dataset,
+                [TRAIN_SAMPLES, VAL_SAMPLES],
+                generator=torch.Generator().manual_seed(SEED)
             )
-
+            
             train_loader = DataLoader(
                 train_dataset,
                 batch_size=BS,
@@ -106,12 +107,22 @@ if __name__ == "__main__":
 
             # ---------------- Model ----------------
 
+            config_run = config.copy()
+            config_run["x_dim"] = DIM
+            config_run["y_dim"] = DIM
+
+            model = build_estimator(
+                args.estimator,
+                config_run,
+                device,
+            )
+            
             #y_dim depends on ADDDIM
             config_run = config.copy()
             config_run["x_dim"] = DIM
             config_run["y_dim"] = DIM + ADDDIM
 
-            model = build_estimator(
+            model_addim = build_estimator(
                 args.estimator,
                 config_run,
                 device,
@@ -123,6 +134,11 @@ if __name__ == "__main__":
                 weight_decay=0.01
             )
 
+            optimizer_addim = torch.optim.AdamW(
+                model_addim.parameters(),
+                LR,
+                weight_decay=0.01
+            )
 
             if GRAD_CLIP is None:
                 clip_fn = lambda params: None
@@ -132,67 +148,95 @@ if __name__ == "__main__":
 
             # ---------------- Training ----------------
 
-            model.train()
+            
             train_bar = tqdm(
                 train_loader,
                 desc=f"Train | add_dim={ADDDIM} | run={run+1}",
             )
 
-            for X, Y in train_bar:
+            for X, Y, Y_emb in train_bar:
 
                 X = X.to(device)
                 Y = Y.to(device)
+                Y_emb = Y_emb.to(device)
 
-                optimizer.zero_grad()
+                # estimator on X Y 
+                model.train()
                 loss, _ = model(X, Y)
+                optimizer.zero_grad()
                 loss.backward()
-
                 clip_fn(model.parameters())
-
                 optimizer.step()
 
+                # estimator on X Y_emb
+                model_addim.train()
+                loss_addim, _ = model_addim(X, Y_emb)
+                optimizer_addim.zero_grad()
+                loss_addim.backward()
+                clip_fn(model_addim.parameters())
+                optimizer_addim.step()
+
                 train_bar.set_postfix(
-                    loss=f"{loss.item():.4f}"
+                    loss_xy=f"{loss.item():.4f}",
+                    loss_emb=f"{loss_addim.item():.4f}"
                 )
+
 
             # ---------------- Validation ----------------
 
             model.eval()
+            model_addim.eval()
             val_mi_total = 0.0
+            val_mi_total_addim = 0.0
             num_batches = 0
 
             with torch.no_grad():
-                for X, Y in val_loader:
+                for X, Y, Y_emb in train_loader:
 
                     X = X.to(device)
                     Y = Y.to(device)
+                    Y_emb = Y_emb.to(device)
 
                     _, mi_estimate = model(X, Y)
+                    _, mi_estimate_addim = model_addim(X, Y_emb)
 
                     val_mi_total += mi_estimate.item()
+                    val_mi_total_addim += mi_estimate_addim.item()
                     num_batches += 1
 
             val_mi = val_mi_total / num_batches
-            run_results.append(val_mi)
+            val_mi_addim = val_mi_total_addim / num_batches
+
+            ratio = val_mi / val_mi_addim
+            
+            run_results.append({
+                "mi_xy": val_mi,
+                "mi_emb": val_mi_addim,
+                "ratio": ratio
+            })
+
 
             print(
-                f"Validation MI (run {run+1}): {val_mi:.4f}"
+                f"Run {run+1} | MI(X,Y)={val_mi:.4f} | "
+                f"MI(X,Y_emb)={val_mi_addim:.4f} | "
+                f"Ratio={ratio:.4f}"
             )
 
         # ---------------- Aggregate ----------------
 
-        mean_mi = float(np.mean(run_results))
-        std_mi = float(np.std(run_results))
+        mean_ratio = float(np.mean([r["ratio"] for r in run_results]))
+        std_ratio = float(np.std([r["ratio"] for r in run_results]))
+
 
         final_results[ADDDIM] = {
-            "mean": mean_mi,
-            "std": std_mi,
+            "mean": mean_ratio,
+            "std": std_ratio,
             "runs": run_results,
         }
 
         print(
             f"\n>>> ADDDIM={ADDDIM} | "
-            f"Mean MI={mean_mi:.4f} | Std={std_mi:.4f}"
+            f"Mean MI ratio={mean_ratio:.4f} | Std={std_ratio:.4f}"
         )
 
     # ---------------- Save Results ----------------
@@ -207,7 +251,7 @@ if __name__ == "__main__":
     figure = plot_estimations(
         final_results,
         "Added Dimensionality",
-        f"{args.estimator} MI Estimate (Mean ± Std)",
+        f"{args.estimator} Ratio of MI Estimate (Mean ± Std)",
     )
 
     plt.tight_layout()
