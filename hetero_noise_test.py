@@ -77,18 +77,17 @@ if __name__ == "__main__":
 
             # ---------------- Dataset ----------------
 
-            train_dataset = GausDropoutHeterosc(
+            dataset = GausDropoutHeterosc(
                 dim=DIM,
                 noise=NOISE,
-                num_samples=TRAIN_SAMPLES,
+                num_samples=TRAIN_SAMPLES + VAL_SAMPLES,
                 cov_value=cov,
             )
 
-            val_dataset = GausDropoutHeterosc(
-                dim=DIM,
-                noise=NOISE,
-                num_samples=VAL_SAMPLES,
-                cov_value=cov,
+            train_dataset, val_dataset = torch.utils.data.random_split(
+                dataset,
+                [TRAIN_SAMPLES, VAL_SAMPLES],
+                generator=torch.Generator().manual_seed(SEED)
             )
 
             train_loader = DataLoader(

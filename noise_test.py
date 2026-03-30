@@ -79,22 +79,19 @@ if __name__ == "__main__":
             A = torch.randn(DIMX, DIMY)
             B = torch.randn(DIMX)
 
-            train_dataset = GausDropoutNetworkReprs(
+            dataset = GausDropoutNetworkReprs(
                 dimX=DIMX,
                 dimY=DIMY,
                 A = A, B = B,
                 noise=NOISE,
-                num_samples=TRAIN_SAMPLES,
+                num_samples=TRAIN_SAMPLES + VAL_SAMPLES,
                 noise_samples=NOISE_SAMPLES,
             )
 
-            val_dataset = GausDropoutNetworkReprs(
-                dimX=DIMX,
-                dimY=DIMY,
-                A = A, B = B,
-                noise=NOISE,
-                num_samples=VAL_SAMPLES,
-                noise_samples=NOISE_SAMPLES,
+            train_dataset, val_dataset = torch.utils.data.random_split(
+                dataset,
+                [TRAIN_SAMPLES, VAL_SAMPLES],
+                generator=torch.Generator().manual_seed(SEED)
             )
 
             train_loader = DataLoader(
