@@ -82,11 +82,12 @@ if __name__ == "__main__":
                 noise=NOISE,
                 num_samples=TRAIN_SAMPLES + VAL_SAMPLES,
                 cov_value=cov,
+                noise_samples=NOISE_SAMPLES
             )
 
             train_dataset, val_dataset = torch.utils.data.random_split(
                 dataset,
-                [TRAIN_SAMPLES, VAL_SAMPLES],
+                [TRAIN_SAMPLES * NOISE_SAMPLES, VAL_SAMPLES * NOISE_SAMPLES],
                 generator=torch.Generator().manual_seed(SEED)
             )
 

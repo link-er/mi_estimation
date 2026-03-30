@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
             train_dataset, val_dataset = torch.utils.data.random_split(
                 dataset,
-                [TRAIN_SAMPLES, VAL_SAMPLES],
+                [TRAIN_SAMPLES * NOISE_SAMPLES, VAL_SAMPLES * NOISE_SAMPLES],
                 generator=torch.Generator().manual_seed(SEED)
             )
 
