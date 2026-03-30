@@ -9,6 +9,8 @@
     "dim": 32,
     "hidden_dim": 128,
 
+    "noise_samples": 1,
+
     "noise": 0.3,
     "add_dims": [0, 5, 10, 20, 30],
 
