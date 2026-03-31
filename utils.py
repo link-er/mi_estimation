@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import argparse
 
-from estimators import CLUB, MINE, InfoNCE
+from estimators import CLUB, MINE, InfoNCE, DoE
 
 
 def plot_estimations(est, xlabel, title):
@@ -61,6 +61,15 @@ def build_estimator(name, config, device):
                 y_dim=config["y_dim"],
                 hidden_dim=config["hidden_dim"],
                 ema_decay=config["ema_decay"],
+            )
+
+        case "doe":
+            model = DoE(
+                x_dim=config["x_dim"],
+                y_dim=config["y_dim"],
+                hidden=config["hidden_dim"],
+                layers=config["layers"],
+                pdf=config["pdf"],
             )
 
 
